@@ -1,0 +1,15 @@
+#! /bin/bash
+
+IFS=':'
+
+get_selection() {
+  for p in $PATH; do
+    ls "$p"
+  done \
+    | fzf
+}
+
+if selection=$( get_selection ); then
+  exec "$selection"
+fi
+
