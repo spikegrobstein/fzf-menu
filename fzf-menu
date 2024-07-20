@@ -1,15 +1,47 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
-IFS=':'
 
+GREEN_START='\033[01;32m'
+COLOR_RESET='\033[0m'
 get_selection() {
-  for p in $PATH; do
-    ls "$p"
+	{ get_applications; get_programs_in_path; } \
+		| fzf \
+		--ansi \
+		--preview="[[ {} == *'.desktop' ]] && cat \$(echo {} | awk '{print \$NF}') || echo \$(whatis {})" \
+		--preview-window=right:60%:wrap \
+		--bind=ctrl-space:toggle-preview \
+		--header="Select a program to launch"
+}
+
+get_programs_in_path() {
+  local pathDeduped=$(printf '%s\n' $PATH | tr ':' '\n' | uniq )
+  for p in $pathDeduped; do
+    find "$p"/ -maxdepth 1 -type f,l -executable -printf '%f\n' 2>/dev/null
   done \
-    | fzf
+    | awk '!x[$0]++'
+    # awk removes duplicates without sorting.  Thanks https://stackoverflow.com/a/11532197/6100005 \
+}
+
+get_applications() {
+    local applicationPathsDeduped=$(printf '%s\n' ${XDG_DATA_DIRS:-/usr/share} | tr ':' '\n' | uniq )
+    for p in $applicationPathsDeduped; do
+		for app in $(find "$p"/applications -maxdepth 1 -type f,l -name '*.desktop' 2>/dev/null); do
+			local appname=$(sed -n '0,/^Name=/{s/^Name=//p}' $app)
+			printf "${GREEN_START}$appname${COLOR_RESET} : $app\n"
+		done
+    done
+}
+
+launch() {
+	if [[ $1 == *'.desktop' ]]; then
+		#exec nohup zsh -c "(gio launch $1) & disown ; sleep 3"
+		exec nohup zsh -c "(setsid -f gio launch $1) & disown ; sleep 3"
+	else
+		exec setsid -f $1 > /dev/null 2>&1
+	fi
 }
 
 if selection=$( get_selection ); then
-  exec "$selection"
+	launch "$(echo $selection | awk '{print $NF}')"
 fi
 
